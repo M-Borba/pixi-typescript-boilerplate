@@ -71,9 +71,14 @@
             "sourceSize": { "w": 43, "h": 19 }
         },
         "pipeDown.png": {
-            "frame": { "x": 76, "y": 116, "w": 26, "h": 121 },
-            "spriteSourceSize": { "x": 0, "y": 0, "w": 26, "h": 121 },
-            "sourceSize": { "w": 26, "h": 121 }
+            "frame": { "x": 76, "y": 116, "w": 26, "h": 122 },
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 26, "h": 122 },
+            "sourceSize": { "w": 26, "h": 122 }
+        },
+        "pipe.png": {
+            "frame": { "x": 80, "y": 130, "w": 19, "h": 121 },
+            "spriteSourceSize": { "x": 0, "y": 0, "w": 19, "h": 121 },
+            "sourceSize": { "w": 19, "h": 121 }
         },
         "pipeUp.png": {
             "frame": { "x": 49, "y": 162, "w": 26, "h": 135 },
