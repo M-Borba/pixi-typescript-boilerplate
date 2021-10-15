@@ -1,6 +1,6 @@
 canvas {
     overflow: hidden;
-    margin: 5 auto;
+    margin: 1vh;
     background-color: black;
     border: 3px solid green;
     position: "absolute";
