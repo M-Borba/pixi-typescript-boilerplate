@@ -15,30 +15,41 @@ const app = new PIXI.Application({
 });
 
 const stage = app.stage;
-let playerPipeSprite: PIXI.Sprite;
-const scoreToWin = 5;
 
+let playerPipeSprite: PIXI.Sprite;
 let robotPipeSprite: PIXI.Sprite;
 let scoreText: PIXI.Text;
-const score = { player: 0, robot: 0 };
-
-const playerPipeBottomBound = () => playerPipeSprite.position.y + playerPipeSprite.height / 2;
-const playerPipeTopBound = () => playerPipeSprite.position.y - playerPipeSprite.height / 2;
-const playerPipeLeftBound = () => playerPipeSprite.position.x + playerPipeSprite.width / 2;
-
-const robotPipeTopBound = () => robotPipeSprite.position.y - robotPipeSprite.height / 2;
-const robotPipeBottomBound = () => robotPipeSprite.position.y + robotPipeSprite.height / 2;
-const robotPipeRightBound = () => robotPipeSprite.position.x - robotPipeSprite.width / 2;
-
-const robotVelocity = 4;
-const birdVelocity = 10;
 let timeout: NodeJS.Timeout;
-timeout = setTimeout(() => console.log("timeout defined"), 1);
-let gamemode = 0;
+let interval: NodeJS.Timeout;
+
+const winningPoints = 1;
+const score = { player: 0, robot: 0 };
 const bird: { vector: { x: number; y: number }; sprite: PIXI.AnimatedSprite | any } = {
     sprite: undefined,
     vector: { x: 1, y: Math.random() - 0.4 },
 };
+
+//Robot bounds
+const playerPipeBottomBound = () => playerPipeSprite.position.y + playerPipeSprite.height / 2;
+const playerPipeTopBound = () => playerPipeSprite.position.y - playerPipeSprite.height / 2;
+const playerPipeVerticalBound = () => playerPipeSprite.position.x - playerPipeSprite.width;
+//Player bounds
+const robotPipeTopBound = () => robotPipeSprite.position.y - robotPipeSprite.height / 2;
+const robotPipeBottomBound = () => robotPipeSprite.position.y + robotPipeSprite.height / 2;
+const robotPipeVerticalBound = () => robotPipeSprite.position.x + robotPipeSprite.width;
+const playerScore = (b: { sprite: PIXI.Sprite }) => b.sprite.position.x > gameWidth;
+const robotScore = (b: { sprite: PIXI.Sprite }) => b.sprite.position.x < 0;
+
+const robotVelocity = 4;
+const birdVelocity = 10;
+
+timeout = setTimeout(() => console.log("timeout defined"), 1);
+let gamemode = 0;
+type birdObject = {
+    vector: { x: number; y: number };
+    sprite: PIXI.AnimatedSprite;
+};
+const birds: birdObject[] = [];
 
 window.onload = async (): Promise<void> => {
     await loadGameAssets();
@@ -71,31 +82,34 @@ function setup(): void {
         fill: "green",
     });
     const backgroundSprite = getBackground();
+    backgroundSprite.zIndex = -1;
     bird.sprite = getBird();
     playerPipeSprite = getPipe();
+    playerPipeSprite.zIndex = -1;
     robotPipeSprite = getPipe();
+    robotPipeSprite.zIndex = -1;
     scoreText = new PIXI.Text(`${score.player}  -  ${score.robot}`, textStyle);
 
     backgroundSprite.anchor.set(0.5, 0.5);
     scoreText.anchor.set(0.5, 0.5);
-    bird.sprite.anchor.set(0.5, 0.5);
+
     playerPipeSprite.anchor.set(0.5, 0.5);
     robotPipeSprite.anchor.set(0.5, 0.5);
 
-    const borderSpace = playerPipeSprite.width;
+    const borderSpace = (3 * playerPipeSprite.width) / 5;
     backgroundSprite.position.set(gameWidth / 2, gameHeight / 2);
     scoreText.position.set(gameWidth / 2, gameHeight / 4);
-    bird.sprite.position.set(gameWidth / 2, gameHeight / 2);
-    playerPipeSprite.position.set(borderSpace, gameHeight / 2);
-    robotPipeSprite.position.set(gameWidth - 2 * borderSpace, gameHeight / 2);
 
+    playerPipeSprite.position.set(borderSpace, gameHeight / 2);
+    robotPipeSprite.position.set(gameWidth - borderSpace, gameHeight / 2);
+
+    stage.sortableChildren = true;
     stage.position.x = 0;
     stage.position.y = 0;
     stage.interactive = true;
     stage.addChild(backgroundSprite);
     stage.addChild(scoreText);
     stage.addChild(bird.sprite);
-    bird.sprite.scale.x *= -1;
     dropBird(bird);
     stage.addChild(playerPipeSprite);
     stage.addChild(robotPipeSprite);
@@ -112,71 +126,104 @@ function gameLoop(): void {
 
         updateBirdPosition(bird);
         // Top & Bottom bounce
-        if (bird.sprite.position.y > gameHeight || bird.sprite.position.y < 0) bounceBirdY();
-        // Robot pipe bounce
-        if (
-            bird.sprite.position.y > robotPipeTopBound() &&
-            bird.sprite.position.y < robotPipeBottomBound() &&
-            bird.sprite.position.x + bird.sprite.width / 2 > robotPipeRightBound()
-        )
-            bounceBirdX();
-        // Player pipe bounce
-        if (
-            bird.sprite.position.y > playerPipeTopBound() &&
-            bird.sprite.position.y < playerPipeBottomBound() &&
-            bird.sprite.position.x - bird.sprite.width / 2 < playerPipeLeftBound()
-        )
-            bounceBirdX();
+        if (bird.sprite.position.y > gameHeight || bird.sprite.position.y < 0) bounceBirdY(bird);
+        if (playerHit(bird)) bounceBirdX(bird);
+        if (robotHit(bird)) bounceBirdX(bird);
 
         // Check if someone scored
-        if (bird.sprite.position.x > gameWidth) {
+        if (playerScore(bird)) {
             score.player += 1;
-            if (score.player < scoreToWin) {
+            if (score.player < winningPoints) {
                 scoreText.text = `You scored !`;
                 bird.sprite.scale.x *= -1;
                 dropBird(bird);
+                clearTimeout(timeout);
+                timeout = setTimeout(() => (scoreText.text = `${score.player}  -  ${score.robot}`), 1000);
             } else {
                 gamemode = 1;
                 scoreText.text = `You won ! Endless level reached !`;
+                //apply filter
                 stage.removeChild(bird.sprite);
+                delete bird.sprite;
+                // we spawn one bird every 3 seconds
+                clearTimeout(timeout);
+                interval = setInterval(() => {
+                    const b = { sprite: getBird(), vector: { x: 1, y: Math.random() - 0.4 } };
+                    birds.push(b);
+                    dropBird(birds[birds.length - 1]);
+                    stage.addChild(birds[birds.length - 1].sprite);
+                }, 3000);
             }
-        } else if (bird.sprite.position.x < 0) {
+        } else if (robotScore(bird)) {
             score.robot += 1;
-            if (score.robot < scoreToWin) {
+            if (score.robot < winningPoints) {
                 scoreText.text = `Bot scored !`;
                 dropBird(bird);
+                clearTimeout(timeout);
+                timeout = setTimeout(() => (scoreText.text = `${score.player}  -  ${score.robot}`), 1000);
             } else {
-                scoreText.text = `You lose :'( `; // TODO:Endless level reached !
+                scoreText.text = `You lose :'( `;
+                gamemode = -1;
                 stage.removeChild(bird.sprite);
+                delete bird.sprite;
             }
         }
-    } else {
-        console.log("todo endless level");
+    } else if (gamemode == 1) {
+        // extra gamemode
+        robotPipeSprite.position.set(gameWidth, gameHeight / 2);
+        robotPipeSprite.scale.y = gameHeight;
+        birds.forEach((b) => {
+            updateBirdPosition(b);
+            // Top & Bottom bounce
+            if (b.sprite.position.y > gameHeight || b.sprite.position.y < 0) bounceBirdY(b);
+            if (playerHit(b)) bounceBirdX(b);
+            if (robotHit(b)) bounceBirdX(b);
+            if (robotScore(b)) {
+                scoreText.text = `GG you managed to mantain ${birds.length} birds flying at the same time !`;
+                clearInterval(interval);
+                birds.forEach((rmBird) => {
+                    stage.removeChild(rmBird.sprite);
+                });
+            }
+        });
     }
 }
-const updateBirdPosition = (b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) => {
+function updateBirdPosition(b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) {
     b.sprite.position.x += birdVelocity * b.vector.x;
     b.sprite.position.y += birdVelocity * b.vector.y;
-};
-// sends bird out flying and updates score after a timeout
-const dropBird = (b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) => {
-    clearTimeout(timeout);
+}
+// sends bird out flying
+function dropBird(b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) {
     b.sprite.position.set(gameWidth * 0.8, gameHeight / 2);
-    timeout = setTimeout(() => (scoreText.text = `${score.player}  -  ${score.robot}`), 1000);
     let yMagnitude = Math.random() - 0.4;
     // its boring if bird has little or no Y velocity
-    if (Math.abs(yMagnitude) < 0.2) yMagnitude += Math.sign(yMagnitude) * (yMagnitude + 0.2);
+    if (Math.abs(yMagnitude) < 0.2) yMagnitude += Math.sign(yMagnitude) * (yMagnitude + 0.3);
     b.vector = { x: -1, y: yMagnitude };
-};
+}
+const playerHit = (b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) =>
+    b.sprite.position.y > robotPipeTopBound() &&
+    b.sprite.position.y < robotPipeBottomBound() &&
+    b.sprite.position.x + (3 * b.sprite.width) / 4 > robotPipeVerticalBound();
 
-const bounceBirdX = () => {
-    bird.vector.x = -bird.vector.x;
-    bird.sprite.scale.x *= -1;
-    bird.sprite.position.x -= 0.5;
-};
+const robotHit = (b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) =>
+    b.sprite.position.y > playerPipeTopBound() &&
+    b.sprite.position.y < playerPipeBottomBound() &&
+    b.sprite.position.x - (3 * b.sprite.width) / 4 < playerPipeVerticalBound();
+
+function bounceBirdX(b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) {
+    b.vector.x = -b.vector.x;
+    b.sprite.scale.x *= -1;
+    b.sprite.position.x -= 0.5;
+}
 // a slightly higher probability to increase speed in y axis after a top or bottom bounce
 // (0.5 would be equal chance to increase or decrease speed)
-const bounceBirdY = () => (bird.vector.y = -bird.vector.y * (1 + (Math.random() - 0.35)));
+function bounceBirdY(b: { sprite: PIXI.Sprite; vector: { x: number; y: number } }) {
+    b.vector.y = -b.vector.y * (1 + (Math.random() - 0.35));
+    // the mean is not 0 so the series tends to infinity, we have to control it
+    if (Math.abs(b.vector.y) > 0.8) b.vector.y = b.vector.y - Math.sign(b.vector.y) * Math.random();
+    // lets also set some minimum Y velocity
+    if (Math.abs(b.vector.y) < 0.2) b.vector.y = 0.2 + (Math.sign(b.vector.y) * Math.random()) / 4;
+}
 
 function resizeCanvas(): void {
     const resize = () => {
@@ -204,6 +251,9 @@ function getBird(): PIXI.AnimatedSprite {
     bird.animationSpeed = 0.2;
     bird.play();
     bird.scale.set(3);
+    bird.scale.x *= -1;
+    bird.anchor.set(0.5, 0.5);
+    bird.position.set(gameWidth * 0.8, gameHeight / 2);
 
     return bird;
 }
